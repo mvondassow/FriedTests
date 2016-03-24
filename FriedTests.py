@@ -2,94 +2,23 @@
 """
 Created on Thu Feb 18 11:10:29 2016
 
-Run Friedman test with multiple comparisons based on Conover 'Practical
-Non-Parameteric Statistics, 3rd Ed.
+Run Friedman test with multiple comparisons based on Conover 1999 'Practical
+Non-Parameteric Statistics, 3rd Ed. (Following Iman and Davenport 1980).
+
+As an alternative for small sample sizes, there is also a bootstrap
+implementation of Friedman's test.
+
+The Friedman test tests whether there is a difference among k treatments
+(columns) where data is grouped into similar blocks (e.g. a colony to which
+several treatments were applied to different zooids). Specifically, the null
+hypothesis is that all rankings of data within a block are equally likely
 
 @author: Michelangelo
 """
 from scipy.stats import rankdata, f
-from numpy import asarray, sum, empty, indices, array, isnan, logical_and
-from numpy import nan, inf, logical_or, isnan
+from numpy import asarray, sum, empty, indices, array, isnan, logical_and, nan
 from numpy.random import randint
 
-def cfriedmanstat(mydata):
-    """
-    Return the improved Friedman statistic T2 (from Conover 1999)
-    """
-    mydata = asarray(mydata)  # Convert mydata to array
-
-    # Size of array: nblocks: number of tuples/blocks  (b in Conover);
-    # nts: number of treatments (k in Conover)
-    [nblocks, nts] = mydata.shape
-
-    ranks = empty([nblocks, nts])  # Initialize array for ranks
-
-    # Create rank matrix, with tied ranks given average of expected rank
-    for k in range(nblocks):
-        ranks[k,:] = rankdata(mydata[k, :])  # , method='average')
-
-    # summedranks: Sum of ranks for each treatment (Rj in Conover)
-    summedranks = sum(ranks, axis=0)
-    # sumsqrranks: Sum of squared ranks to correct for ties (A1 in Conover)
-    sumsqrranks = sum(ranks**2)
-    # correction: correction factor for ties (C1 in Conover)
-    correction = nblocks*nts*((nts+1)**2)/4
-
-    # T1: Friedman's T1 statistic; approximately follows Chi2 under null
-    # hypothesis
-    T1numerator = (nts-1) * sum((summedranks - nblocks * (nts + 1) / 2) ** 2)
-    X = nblocks*(nts-1)
-    if sumsqrranks == correction:
-        if T1numerator <= 0:
-            T1 = nan
-            T2 = nan
-        else:
-            T1 = inf            
-            T2 = inf
-            
-    else:
-        T1 = T1numerator/(sumsqrranks - correction)
-        # T2: Preferred statistic that follows F-distribution under the null.
-        if X <= T1:
-            if logical_and(T1 > 0, X == T1):
-                T2 = inf
-            else:
-                T2 = nan
-        else:
-            T2 = ((nblocks-1)*T1/(X-T1))
-    return([['T2', T2], ['nblocks', nblocks], ['nts', nts],
-            ['summed ranks (along columns)', summedranks],
-            ['sum squared ranks', sumsqrranks],
-            ['correction factor for ties', correction], ['T1',T1]])
-
-
-def cfriedman(mydata, verbose=True):
-    """
-    Perform Friedman test and multiple comparisons.
-    It tests whether there is a difference among k treatments (columns) where
-    data is grouped into similar blocks (e.g. a colony to which several
-    treatments were applied to different zooids).
-    This function uses Conover's recommendation for an improved version that
-    compares to the F-distribution rather than the Chi-square.
-    mydata: an array or list of equal sized lists.
-    Columns of mydata: treatments; rows of mydata: blocks.
-    """
-    T2list = cfriedmanstat(mydata)
-    if logical_and(logical_and(T2list[0][0] == 'T2',
-             T2list[1][0] == 'nblocks'),
-             T2list[2][0] == 'nts'):
-        T2 = T2list[0][1]
-        nblocks = T2list[1][1]
-        nts = T2list[2][1]
-        # Calculate p-value based on cdf of F-distribution
-        Pfried = 1-f.cdf(T2, nts-1, (nblocks-1)*(nts-1))
-        if verbose:
-            print('P:', Pfried)
-            print(T2list)
-
-        return([['P', Pfried], T2list])
-    else:
-        return('Output of cfriedmanstat() not as expected')
 
 def resamplealongrows(mydata):
     """
@@ -99,13 +28,13 @@ def resamplealongrows(mydata):
     rows is left unchanged.
     mydata: a 2D array or list of equal-length lists of numbers
     """
-    mydata = asarray(mydata)  # Force data array to be array.
+    mydata = asarray(mydata)  # Force data to be an array.
     [nblocks, nts] = mydata.shape  # Get dimensions of data
     rowinds = indices((nblocks, nts))[0]  # list of row indices
-    colinds = randint(nts, size=[nblocks, nts])  # Resample column indices FOR
-                                            # EACH ROW with replacement.
-    return(mydata[rowinds, colinds])  # Return values from mydata at indices
-                                # specified by rowinds and colinds
+    # Resample column indices FOR EACH ROW with replacement.
+    colinds = randint(nts, size=[nblocks, nts])  
+    # Return values from mydata at indices specified by rowinds and colinds
+    return(mydata[rowinds, colinds])  
 
 def bootsample2D(mydata):
     """
@@ -119,34 +48,11 @@ def bootsample2D(mydata):
     [nblocks, nts] = mydata.shape  # Get dimensions of data
     # rowinds: list of row indices, randomized by row
     rowinds = indices((nblocks, nts))[0][randint(nblocks, size=nblocks), :]
-    colinds = randint(nts, size=[nblocks, nts])  # Resample column indices FOR
-                                            # EACH ROW with replacement.
-    return(mydata[rowinds, colinds])  # Return values from mydata at indices
-                                # specified by rowinds and colinds
+    # Resample column indices FOR EACH ROW with replacement.
+    colinds = randint(nts, size=[nblocks, nts])
+    # Return values from mydata at indices specified by rowinds and colinds
+    return(mydata[rowinds, colinds])
 
-
-def bfriedman(mydata, nboot=5000, verbose=True):
-    """
-    Bootstrap version of Friedman test
-    """
-    mydata = asarray(mydata)  # Convert mydata to array
-
-    T2list = cfriedmanstat(mydata)
-    if T2list[0][0] == 'T2':
-        T2 = T2list[0][1]
-        if isnan(T2):
-            T2 = 0
-            print('T2 is nan; T2 set to 0.')
-            return(nan)
-        else:
-            T2boot = empty(nboot)
-            for k in range(nboot):
-                T2boot[k] = cfriedmanstat(bootsample2D(mydata))[0][1]
-
-            pboot = sum(T2boot >= T2)/T2boot.size
-            return([['P', pboot], T2list])
-    else:
-        return('Output of cfriedmanstat() not as expected')
 
 def TestFriedStuff():
     """
@@ -154,16 +60,18 @@ def TestFriedStuff():
     """
     # Test example for Friedman test from Conover
     print('Grass data example from conover: ')
-    grassdata = [[4,3,2,1],[4,2,3,1],[3,1.5,1.5,4],[3,1,2,4],[4,2,1,3],
-                 [2,2,2,4],[1,3,2,4],[2,4,1,3],[3.5,1,2,3.5],[4,1,3,2],
-                 [4,2,3,1],[3.5,1,2,3.5]]
+    grassdata = [[4,3,2,1], [4,2,3,1], [3,1.5,1.5,4], [3,1,2,4], [4,2,1,3],
+                 [2,2,2,4], [1,3,2,4], [2,4,1,3], [3.5,1,2,3.5], [4,1,3,2],
+                 [4,2,3,1], [3.5,1,2,3.5]]
     print('Output from criedman() function, which follows Conover 1999)')
-    cfriedman(grassdata)
+    friedgrass = friedmanstat(grassdata)
+    friedgrass.cfriedman()
+    print(vars(friedgrass))
     print('')
     print('Expected Output: Summed Ranks: [ 38.   23.5  24.5  34. ]',
-     'nblocks: 12 ; ntreatments: 4 ; A1: 356.5 ; C1: 300.0',
-     'T1: 8.09734513274 ; T2: 3.19219790676 ; P: 0.0362154746433')
-    
+          'nblocks: 12 ; ntreatments: 4 ; A1: 356.5 ; C1: 300.0',
+          'T1: 8.09734513274 ; T2: 3.19219790676 ; P: 0.0362154746433')
+
     # Test Friedman for simple data set where it should be weak. Bootstrap
     # maxk resamples (with replacement), and calculate Conover's version of
     # Friedman test
@@ -175,15 +83,17 @@ def TestFriedStuff():
     l = 0
     for k in range(nboot):
         bootdat = resamplealongrows(simdata)
-        p[k] = cfriedman(bootdat, verbose=False)[0][1]
+        bootl = friedmanstat(bootdat)
+        bootl.cfriedman()
+        p[k] = bootl.P
         if logical_and(isnan(p[k]), l < 5):
             print('Found a nan! Mmmm... naan: ')
             print(bootdat)
             l = l + 1
-    
+
     print('number of bootstrap resamples: ', nboot)
     print('with nans')
-    for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001, 
+    for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001,
                   0.0001]:
         print('Fraction with p<', alpha, ': ', sum(p < alpha) / p.size)
     # nan's only appear when T1 becomes a nan, when all data values are the
@@ -192,7 +102,7 @@ def TestFriedStuff():
     print('without nans (set p to 1 for nans)')
     p2 = array(p)
     p2[isnan(p)] = 1
-    for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001, 
+    for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001,
                   0.0001]:
         print('Fraction with p<', alpha, ': ', sum(p2 < alpha) / p2.size)
     #  Expected output for both: fraction of p<alpha should be fairly close to
@@ -214,9 +124,148 @@ def TestFriedStuff():
     #  Fraction with p< 0.002 :  0.0014
     #  Fraction with p< 0.001 :  0.0014
     #  Fraction with p< 0.0001 :  0.0014
-    
+
     print('---')
     print('Test bootstrap version (bfriedman() of Friedman test')
     maxb = 10000
     print('p value for grass data from Conover; nboot = ', maxb)
-    print(bfriedman(grassdata, nboot=maxb))
+    friedgrass.bfriedman(nboot=maxb)
+    print(vars(friedgrass))
+
+
+def friedmantest(mydata, variant='Fdist', nboot = 5000, verbose=True):
+    """
+    mydata: 2-level list or dim-2 array (columns: treatments; rows: blocks)
+    variant: 'Fdist' gives version from Conover (originally Iman & Davenport);
+        'boot' gives bootstrap version
+    """
+    try:
+        mystats = friedmanstat(mydata)
+        if (variant == 'Fdist'):
+            mystats.cfriedman()
+        elif (variant == 'Boot'):
+            mystats.bfriedman(nboot)
+        else:
+            mystats = None
+            print('Variant not recognized.')
+
+        if verbose and not (mystats is None):
+            print(vars(mystats))
+
+        return(mystats)
+    except:
+        print('Error in friedmantest')
+        return(None)
+
+
+class friedmanstat:
+    """
+    Object containing stats for Friedman test.
+    """
+    def __init__(self, mydata):
+        """
+        Initialize a friedmanstat object with statistic T2 (from Conover 1999)
+        mydata: an array or list of equal sized lists.
+        Columns of mydata are treatments; rows of mydata are blocks.
+        """
+        try:
+            mydata = asarray(mydata)  # Convert mydata to array
+
+            # Size of array: nblocks: number of tuples/blocks  (b in Conover);
+            # nts: number of treatments (k in Conover)
+            [nblocks, nts] = mydata.shape
+
+            ranks = empty([nblocks, nts])  # Initialize array for ranks
+
+            # Create rank matrix, with tied ranks given average of ranks
+            for k in range(nblocks):
+                ranks[k,:] = rankdata(mydata[k, :])  # , method='average')
+
+            # summedranks: Sum of ranks for each treatment (Rj in Conover)
+            summedranks = sum(ranks, axis=0)
+            # sumsqrranks: Sum of squared ranks used to correct for ties (A1
+            # in Conover)
+            sumsqrranks = sum(ranks**2)
+            # correction: correction factor for ties (C1 in Conover)
+            correction = nblocks*nts*((nts+1)**2)/4
+
+            # T1: Friedman's T1 statistic; approximately follows Chi2 under
+            # null hypothesis. If statements to deal with cases (e.g. when all
+            # columns are tied in all blocks, or some other error crops up.
+            T1numerator = (nts-1)*sum((summedranks-nblocks*(nts+1)/2)**2)
+            X = nblocks*(nts-1)
+            if sumsqrranks == correction:
+                if T1numerator <= 0:
+                    T1 = nan
+                    T2 = nan
+                else:
+                    T1 = inf
+                    T2 = inf
+
+            else:
+                T1 = T1numerator/(sumsqrranks - correction)
+                # T2: Preferred statistic (follows F-distribution under null)
+                if X <= T1:
+                    if logical_and(T1 > 0, X == T1):
+                        T2 = inf
+                    else:
+                        T2 = nan
+                else:
+                    T2 = ((nblocks-1)*T1/(X-T1))
+
+            self.T2 = T2  # Improved Friedman statistic; follows F-distribution 
+            # see Conover 1999
+            self.nblocks = nblocks # number of blocks
+            self.nts = nts # number of treatments
+            self.summedranks = summedranks # summed ranks along columns
+            self.sumsqrranks = sumsqrranks # sum squared ranks
+            self.tiecorrection = correction # correction factor for ties
+            self.T1 = T1 #Standard Friedman statistic
+            self.P = None # P-value determined by test functions below.
+            # Distribution used in test. Fill in with test functions below.         
+            self.distribution = None
+            self.mydata = mydata  # Input data as an array
+
+        except:
+            self.T2 = None
+            self.mydata = None
+            print('Error in initializing friedmanstat structure')
+
+    def cfriedman(self):
+        """
+        This function uses Conover's recommendation for an improved version
+        that compares to the F-distribution rather than the Chi-square.
+        """
+        try:
+            # Calculate p-value based on cdf of F-distribution for T2
+            self.P = 1-f.cdf(self.T2,self.nts-1,(self.nblocks-1)*(self.nts-1))
+            self.distribution = 'f.cdf'
+        except:
+            self.P = None
+            self.distribution = None
+            print('Error in cfriedman')
+
+    def bfriedman(self, nboot=5000):
+        """
+        Bootstrap version of Friedman test
+        """
+        try:
+            if isnan(self.T2):
+                self.T2 = 0
+                print('T2 is nan; T2 set to 0.')
+                self.P = None
+                self.distribution = None
+            else:
+                T2boot = empty(nboot)
+                for k in range(nboot):
+                    T2boot[k] = friedmanstat(bootsample2D(self.mydata)).T2
+
+                # Calculate P value from bootstrap sample
+                self.P = sum(T2boot >= self.T2)/T2boot.size
+                # 'bootstrap' will tell the next function what to do.
+                self.distribution = ['bootstrap', ['nboot', nboot],
+                                     ['bootsamples', T2boot]]
+        except:
+            self.P = None
+            self.distribution = None
+            print('Error in bfriedman')
