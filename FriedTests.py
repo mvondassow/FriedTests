@@ -9,11 +9,8 @@ Non-Parameteric Statistics, 3rd Ed.
 """
 from scipy.stats import rankdata, f
 from numpy import asarray, sum, empty, indices, array, isnan, logical_and
-from numpy import nan, inf, logical_or
+from numpy import nan, inf, logical_or, isnan
 from numpy.random import randint
-
-import numpy as n
-
 
 def cfriedmanstat(mydata):
     """
@@ -94,19 +91,6 @@ def cfriedman(mydata, verbose=True):
     else:
         return('Output of cfriedmanstat() not as expected')
 
-# Test example for Friedman test from Conover
-grassdata = [[4,3,2,1],[4,2,3,1],[3,1.5,1.5,4],[3,1,2,4],[4,2,1,3],[2,2,2,4],
-             [1,3,2,4],[2,4,1,3],[3.5,1,2,3.5],[4,1,3,2],[4,2,3,1],
-             [3.5,1,2,3.5]]
-cfriedman(grassdata)
-print('')
-#  Expected Output:
-#  Summed Ranks
-#  [ 38.   23.5  24.5  34. ]
-#  nblocks: 12 ; ntreatments: 4 ; A1: 356.5 ; C1: 300.0
-#  T1: 8.09734513274 ; T2: 3.19219790676 ; P: 0.0362154746433
-
-
 def resamplealongrows(mydata):
     """
     Create bootsrap of array, resampling along rows, but not columns
@@ -122,54 +106,6 @@ def resamplealongrows(mydata):
                                             # EACH ROW with replacement.
     return(mydata[rowinds, colinds])  # Return values from mydata at indices
                                 # specified by rowinds and colinds
-
-# Test Friedman for simple data set where it should be weak. Bootstrap
-# maxk resamples (with replacement), and calculate Conover's version of
-# Friedman test
-simdata = [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0]]  # ,[1,0,0]]
-print('simdata: ', simdata)
-nboot = 5000
-p = empty(nboot)
-l = 0
-for k in range(nboot):
-    bootdat = resamplealongrows(simdata)
-    p[k] = cfriedman(bootdat, verbose=False)[0][1]
-    if logical_and(n.isnan(p[k]), l < 5):
-        print('Found a nan! Mmmm... naan: ')
-        print(bootdat)
-        l = l + 1
-
-print('number of bootstrap resamples: ', nboot)
-print('with nans')
-for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001, 0.0001]:
-    print('Fraction with p<', alpha, ': ', sum(p < alpha) / p.size)
-# nan's only appear when T1 becomes a nan, when all data values are the
-# same. Therefore, should cound as p=1; shouldn't make a difference, but check.
-print('without nans (set p to 1 for nans)')
-p2 = array(p)
-p2[isnan(p)] = 1
-for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001, 0.0001]:
-    print('Fraction with p<', alpha, ': ', sum(p2 < alpha) / p2.size)
-#  Expected output for both: fraction of p<alpha should be fairly close to
-#  alpha, except at very low alpha. This suggests that even for low numbers of
-#  replicates, Conover's version of the Friedman test seems pretty good,
-#  although very low p-values are much too low, and intermediate (0.1 - 0.05)
-#  are conservative.
-#  Example output:
-#  simdata:  [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0]]
-#  number of bootstrap resamples:  5000
-#  with nans (p=1)
-#  Fraction with p< 0.5 :  0.5532
-#  Fraction with p< 0.2 :  0.183
-#  Fraction with p< 0.1 :  0.0888
-#  Fraction with p< 0.05 :  0.03
-#  Fraction with p< 0.02 :  0.03
-#  Fraction with p< 0.01 :  0.0112
-#  Fraction with p< 0.005 :  0.0014
-#  Fraction with p< 0.002 :  0.0014
-#  Fraction with p< 0.001 :  0.0014
-#  Fraction with p< 0.0001 :  0.0014
-
 
 def bootsample2D(mydata):
     """
@@ -212,8 +148,75 @@ def bfriedman(mydata, nboot=5000, verbose=True):
     else:
         return('Output of cfriedmanstat() not as expected')
 
-print('---')
-print('Test bootstrap version of Friedman test')
-maxb = 10000
-print('p value for grass data from Conover; nboot = ', maxb)
-print(bfriedman(grassdata, nboot=maxb))
+def TestFriedStuff():
+    """
+    function to run tests on functions above.
+    """
+    # Test example for Friedman test from Conover
+    print('Grass data example from conover: ')
+    grassdata = [[4,3,2,1],[4,2,3,1],[3,1.5,1.5,4],[3,1,2,4],[4,2,1,3],
+                 [2,2,2,4],[1,3,2,4],[2,4,1,3],[3.5,1,2,3.5],[4,1,3,2],
+                 [4,2,3,1],[3.5,1,2,3.5]]
+    print('Output from criedman() function, which follows Conover 1999)')
+    cfriedman(grassdata)
+    print('')
+    print('Expected Output: Summed Ranks: [ 38.   23.5  24.5  34. ]',
+     'nblocks: 12 ; ntreatments: 4 ; A1: 356.5 ; C1: 300.0',
+     'T1: 8.09734513274 ; T2: 3.19219790676 ; P: 0.0362154746433')
+    
+    # Test Friedman for simple data set where it should be weak. Bootstrap
+    # maxk resamples (with replacement), and calculate Conover's version of
+    # Friedman test
+    print('Test cfriedman() for case in which it should perform poorly')
+    simdata = [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0]]  # ,[1,0,0]]
+    print('simdata: ', simdata)
+    nboot = 5000
+    p = empty(nboot)
+    l = 0
+    for k in range(nboot):
+        bootdat = resamplealongrows(simdata)
+        p[k] = cfriedman(bootdat, verbose=False)[0][1]
+        if logical_and(isnan(p[k]), l < 5):
+            print('Found a nan! Mmmm... naan: ')
+            print(bootdat)
+            l = l + 1
+    
+    print('number of bootstrap resamples: ', nboot)
+    print('with nans')
+    for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001, 
+                  0.0001]:
+        print('Fraction with p<', alpha, ': ', sum(p < alpha) / p.size)
+    # nan's only appear when T1 becomes a nan, when all data values are the
+    # same. Therefore, should cound as p=1; shouldn't make a difference, but
+    # check.
+    print('without nans (set p to 1 for nans)')
+    p2 = array(p)
+    p2[isnan(p)] = 1
+    for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001, 
+                  0.0001]:
+        print('Fraction with p<', alpha, ': ', sum(p2 < alpha) / p2.size)
+    #  Expected output for both: fraction of p<alpha should be fairly close to
+    #  alpha, except at very low alpha. This suggests that even for low numbers
+    #  of replicates, Conover's version of the Friedman test seems pretty good,
+    #  although very low p-values are much too low, and intermediate
+    #  (0.1 - 0.05) are conservative.
+    #  Example output:
+    #  simdata:  [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0]]
+    #  number of bootstrap resamples:  5000
+    #  with nans (p=1)
+    #  Fraction with p< 0.5 :  0.5532
+    #  Fraction with p< 0.2 :  0.183
+    #  Fraction with p< 0.1 :  0.0888
+    #  Fraction with p< 0.05 :  0.03
+    #  Fraction with p< 0.02 :  0.03
+    #  Fraction with p< 0.01 :  0.0112
+    #  Fraction with p< 0.005 :  0.0014
+    #  Fraction with p< 0.002 :  0.0014
+    #  Fraction with p< 0.001 :  0.0014
+    #  Fraction with p< 0.0001 :  0.0014
+    
+    print('---')
+    print('Test bootstrap version (bfriedman() of Friedman test')
+    maxb = 10000
+    print('p value for grass data from Conover; nboot = ', maxb)
+    print(bfriedman(grassdata, nboot=maxb))
