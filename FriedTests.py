@@ -4,7 +4,8 @@ Run two versions of Friedman test with multiple comparisons.
 
 The first version is based on Conover 1999 'Practical Non-Parameteric
 Statistics, 3rd Ed. (Following Iman and Davenport 1980). As an alternative for
-small sample sizes, there is a randomization implementation of Friedman's test.
+small sample sizes, there is a randomization implementation of Friedman's test,
+based on Manly's 'Randomization, Bootstrap,...'1997.
 
 The Friedman test tests whether there is a difference among k treatments
 (columns) where data is grouped into b similar blocks (e.g. a colony to which
@@ -19,24 +20,39 @@ friedmanstat : class
         printfriedstuff()
 resamplealongrows : function
     Resample an array along rows only; used to test Friedman test performance
-bootsample2D : function
+bootsample2D : function NOT USED BUT LEFT IN IN CASE USEFUL LATER
     Randomly resample an array once; unused
-randomize2D : function
-    Randomly resample an array multiple times (vectorized) used for rfriedman()
-    method of friedmanstat
+bootset2D : function NOT USED BUT LEFT IN IN CASE USEFUL LATER
+    Resamples an array multiple times (vectorized), maintaining organization of
+    data grouped in blocks (resamples blocks, then resamples within blocks)
+randomizeAlongRows : function
+    Randomize an array multiple times (vectorized) used for rfriedman()
+    method of friedmanstat; randomly permutes order along rows
 rankalongrows3D : function
     Rank along the rows of a 3D numeric array using average value for rank of
     ties. Used by rfriedman() method of friedmanstat.
+TestFriedStuff : function
     Run some example tests on performance of Friedman test
+SimFriedStuff : function
+    Run a simulation to test the accuracy of Friedman test functions for a
+    user defined number of blocks and treatments and distribution.
 friedmantest : function
     Run friedman test. Combines various steps using the class methods.
-    
+
 Dependencies
 ------------
 numpy
 numpy.stats
 numpy.random
 scipy.stats
+time
+
+Desired changes:
+---------------
+* Needs functions to do simulations to test the multiple comparison tests. It's
+not obvious what those should do: if one skips the group testing procedure,
+there is a higher experiment-wise false positive rate than indicated by the
+pairwise p-values, but that's the point of doing the group testing first.
 
 Created on Thu Feb 18 11:10:29 2016
 
@@ -44,7 +60,8 @@ Created on Thu Feb 18 11:10:29 2016
 """
 from scipy.stats import rankdata, f, t
 from numpy import asarray, sum, empty, indices, array, isnan, logical_and, nan
-from numpy.random import randint
+from numpy.random import randint, random
+from time import clock
 import numpy as np
 
 
@@ -77,7 +94,7 @@ def resamplealongrows(mydata):
 
 def bootsample2D(mydata):
     """
-    Randomize a 2D array once, to produce a new 2D array.
+    Resample a 2D array once, to produce a new 2D array.
 
     First resamples rows, and then resamples along rows. Produces an array from
     mydata that has the same dimensions, but each row is formed by first
@@ -103,14 +120,48 @@ def bootsample2D(mydata):
     return(mydata[rowinds, colinds])
 
 
-def randomize2D(mydata, nreps):
+def bootset2D(mydata, nreps):
     """
-    Randomize a 2D array multiple times, to produce a 3D array of multiple
-    randomizations.
+    Resample a 2D array multiple times, to produce a 3D array of multiple
+    bootstrap samples.
+
+    Produces 3D array from mydata in which each layer is formed by first
+    picking random rows from mydata, and then taking random samples (with
+    replacement) from each row. It is a 3D stack of bootstrap samples of the
+    2D array, preserving the structure of nts measurements from nblocks blocks.
+
+    Parameters
+    ----------
+    mydata : list or ndarray
+        A 2D array or list of equal-length lists of numbers; each layer (along
+        dim 0) contains one randomization.
+    nreps : number of times to run resampling
+
+    Returns
+    -------
+    ndarray
+        Array is dim 3, numeric. Each layer (along dim 0) contains one
+        resampling of mydata: nreps layers, by nblocks, by nts.
+    """
+    mydata = asarray(mydata)  # Force data array to be array.
+    [nblocks, nts] = mydata.shape  # Get dimensions of data
+    # rowinds: list of row indices, randomized by row
+    rowinds = indices(
+        (nblocks, nts))[0][randint(nblocks, size=[nreps, nblocks]), :]
+    # Resample column indices FOR EACH ROW with replacement.
+    colinds = randint(nts, size=[nreps, nblocks, nts])
+    # Return values from mydata at indices specified by rowinds and colinds
+    return(mydata[rowinds, colinds])
+
+
+def randomizeAlongRows(mydata, nreps):
+    """
+    Randomize a 2D array multiple times along the rows, to produce a 3D array
+    of multiple randomized samples.
 
     Produces an array from mydata that has the same dimensions, but each row
-    is formed by first picking random rows from mydata, and then taking random
-    samples (with replacement) from each row.
+    is formed by taking a randome permutation of the data from the original
+    row.
 
     Parameters
     ----------
@@ -126,12 +177,14 @@ def randomize2D(mydata, nreps):
         randomization of mydata.
     """
     mydata = asarray(mydata)  # Force data array to be array.
-    [nblocks, nts] = mydata.shape  # Get dimensions of data
-    # rowinds: list of row indices, randomized by row
-    rowinds = indices(
-        (nblocks, nts))[0][randint(nblocks, size=[nreps, nblocks]), :]
-    # Resample column indices FOR EACH ROW with replacement.
-    colinds = randint(nts, size=[nreps, nblocks, nts])
+    [nrows, ncolumns] = mydata.shape  # Get dimensions of data
+    # Create 3D array of random floats
+    myrands = random(size=(nreps, nrows, ncolumns))
+    # Convert random floats to randomized column indices.
+    colinds = np.argsort(myrands, 2)
+    # Create 3D array of row indices (matching original column indices).
+    rowinds = np.tile(
+        np.reshape(np.arange(nrows), (1, nrows, 1)), (nreps, 1, ncolumns))
     # Return values from mydata at indices specified by rowinds and colinds
     return(mydata[rowinds, colinds])
 
@@ -261,7 +314,65 @@ def TestFriedStuff():
     maxb = 10000
     print('p value for grass data from Conover; nreps = ', maxb)
     friedgrass.rfriedman(nreps=maxb)
+    print(friedgrass.P)
     print(vars(friedgrass))
+
+
+def SimFriedStuff(nblocks=5, nts=3, distfunc=None, variant='Rand', nsim=1000,
+                  nreps=1000, alpha=0.05, verbose=True):
+    """
+    Run simulations to test Friedman test and multiple comparisons
+    
+    Parameters
+    ----------
+    nblocks : int
+        number of blocks
+    nts : int
+        number of treatments
+    distfunc : function
+        Transforms a 2 dimensional or 3 dimensional array of uniformly
+        distributed random numbers (on range [0,1]) into user-defined
+        distribution (e.g. rounding to generate ties, etc.)
+    variant : string
+        'Rand' or 'Fdist'
+    nsim : int
+        number of trials for the simulation
+    nreps : int
+        number of resamplings to do if using 'Rand' variant
+
+    Returns
+    -------
+    none
+    """
+    t = clock()
+    simdata = random((nblocks, nts))
+    if distfunc is not None:
+        try:
+            simdata = distfunc(simdata)
+        except:
+            print(
+                'distfunc is not a valid function on multidimensional arrays.'
+                'Continuing using uniform distribution')
+
+    temp = friedmantest(simdata, variant, nreps, verbose=False)
+    testduration = round(nsim*(clock()-t))
+    response = input(
+        'This will take ~'+str(testduration)+' s. Continue? [y/n]')
+
+    if response is 'n' or response is 'N':
+        print('Simulation brutally cut down in its prime by the user')
+    elif response is 'y' or response is 'Y':
+        simdata = random((nsim, nblocks, nts))
+        GroupTest = np.full(nsim, nan)
+        for k in range(nsim):
+            temp = friedmantest(
+                simdata[k, :, :], variant, nreps, verbose=False)
+            GroupTest[k] = temp.P<=alpha
+            
+        print('Percentile with P <= ' +str(alpha) + ': ' + 
+            str(sum(GroupTest)/nsim))
+    else:
+        print('Invalid response. Simulation not done.')
 
 
 def friedmantest(mydata, variant='Fdist', nreps=5000, verbose=True):
@@ -485,7 +596,7 @@ class friedmanstat:
                 # Generate randomized data (take 2 D data array; generate 3 D
                 # array of randomizations; each layer (along dim 0) contains
                 # one randomization.
-                RandomizedData = randomize2D(self.mydata, nreps)
+                RandomizedData = randomizeAlongRows(self.mydata, nreps)
                 # Rank randomized data.
                 RandDataRanks = rankalongrows3D(RandomizedData)
 
