@@ -8,8 +8,10 @@ Moved to separate file on Thu Apr 23, 2016
 from scipy.stats import rankdata, f, t
 from numpy import asarray, sum, empty, indices, array, isnan, logical_and, nan
 from numpy.random import randint, random
-from time import clock
+import time as time
 import numpy as np
+
+import friedtestfuns as fry
 
 def TestFriedStuff():
     """
@@ -29,7 +31,7 @@ def TestFriedStuff():
                  [2,2,2,4], [1,3,2,4], [2,4,1,3], [3.5,1,2,3.5], [4,1,3,2],
                  [4,2,3,1], [3.5,1,2,3.5]]
     print('Output from criedman() function, which follows Conover 1999)')
-    friedgrass = friedmanstat(grassdata)
+    friedgrass = fry.friedmanstat(grassdata)
     friedgrass.cfriedman()
     print(vars(friedgrass))
     print('')
@@ -47,8 +49,8 @@ def TestFriedStuff():
     p = empty(nboot)
     l = 0
     for k in range(nboot):
-        bootdat = resamplealongrows(simdata)
-        bootl = friedmanstat(bootdat)
+        bootdat = fry.resamplealongrows(simdata)
+        bootl = fry.friedmanstat(bootdat)
         bootl.cfriedman()
         p[k] = bootl.P
         if logical_and(isnan(p[k]), l < 5):
@@ -99,10 +101,10 @@ def TestFriedStuff():
     print(vars(friedgrass))
 
 
-def SimFriedStuff(nblocks=5, nts=3, distfunc=None, variant='Rand', nsim=1000,
-                  nreps=1000, alpha=0.05, verbose=True):
+def SimFriedStuff(nblocks=5, nts=3, distfunc=lambda x: x, variant='Rand',
+                  nsim=1000, nreps=1000, alpha=0.05, verbose=True):
     """
-    Run simulations to test Friedman test and multiple comparisons
+    Run simulations to test Friedman test for null hypothesis.
     
     Parameters
     ----------
@@ -125,32 +127,120 @@ def SimFriedStuff(nblocks=5, nts=3, distfunc=None, variant='Rand', nsim=1000,
     -------
     none
     """
-    t = clock()
+    t = time.clock()
     simdata = random((nblocks, nts))
-    if distfunc is not None:
-        try:
-            simdata = distfunc(simdata)
-        except:
-            print(
-                'distfunc is not a valid function on multidimensional arrays.'
-                'Continuing using uniform distribution')
+    try:
+        simdata = distfunc(simdata)
+    except:
+        print('distfunc is not a valid function on multidimensional arrays.'
+            'Continuing using uniform distribution')
+        def distfunc(x):
+            return(x)
 
-    temp = friedmantest(simdata, variant, nreps, verbose=False)
-    testduration = round(nsim*(clock()-t))
+    temp = fry.friedmantest(simdata, variant, nreps, verbose=False)
+    testduration = round(nsim*(time.clock()-t))
     response = input(
         'This will take ~'+str(testduration)+' s. Continue? [y/n]')
 
     if response is 'n' or response is 'N':
         print('Simulation brutally cut down in its prime by the user')
     elif response is 'y' or response is 'Y':
-        simdata = random((nsim, nblocks, nts))
+        simdata = distfunc(random((nsim, nblocks, nts)))
         GroupTest = np.full(nsim, nan)
         for k in range(nsim):
-            temp = friedmantest(
+            temp = fry.friedmantest(
                 simdata[k, :, :], variant, nreps, verbose=False)
-            GroupTest[k] = temp.P<=alpha
-            
-        print('Percentile with P <= ' +str(alpha) + ': ' + 
-            str(sum(GroupTest)/nsim))
+            GroupTest[k] = temp.P <= alpha
+
+        print('Fraction with P <= ' + str(alpha) + ': ' +
+              str(sum(GroupTest) / nsim))
+    else:
+        print('Invalid response. Simulation not done.')
+
+
+def SimFriedPost(nblocks=5, nts=3, dif=0.5, distfunc=lambda x: x,
+                 variant='Rand', nsim=1000, nreps=1000, alpha=0.05,
+                 verbose=True):
+    """
+    Run simulations to test post-hoc tests following the Friedman test.
+
+    The omnibus test already limits the error rate for cases when there are no
+    differences, so the error rate of interest is for the comparison of groups
+    that are not different, when one group is different (i.e. if A differs from
+    B, C, ..., but B, C ... are not different, the probability of falsely
+    identifying B & X (X~=A) different should be approximately alpha.
+
+    This simulation generates arrays of simulated data where the first column
+    (treatment1) is generated from a population different from the other
+    columns (treatments1...nts), and then tests for differences among any pair
+    of columns that were generated with identical population parameters.
+    If it controls the error rate, there should be 'alpha' chance of both
+    omnibus test indicating a significant difference and getting a P<alpha for
+    any pair of 'non-different' columns.
+    Prints: frequency of detecting a difference with omnibus test (higher
+    number means more power), and frequency of detecting any differences among
+    'non-different columns (type 1 error rate) for pairwise comparisons.
+
+    Parameters
+    ----------
+    nblocks : integer
+        number of blocks
+    nts : integer
+        number of treatments (nts >=3)
+    dif : float
+        difference between first 'treatment' and other treatments in simulation
+    distfunc : function
+        Transforms a 2 dimensional or 3 dimensional array of uniformly
+        distributed random numbers (on range [0,1]) into user-defined
+        distribution (e.g. rounding to generate ties, etc.)
+    variant : string
+        'Rand' or 'Fdist'
+    nsim : int
+        number of trials for the simulation
+    nreps : int
+        number of resamplings to do if using 'Rand' variant
+
+    Returns
+    -------
+    none
+    """
+    t = time.clock()
+    simdata = random((nblocks, nts)) + np.concatenate((
+        np.full((nblocks, 1), dif), np.zeros((nblocks, nts - 1))), 1)
+    try:
+        simdata = distfunc(simdata)
+    except:
+        print('distfunc is not a valid function on multidimensional arrays.'
+            'Continuing using uniform distribution')
+        def distfunc(x):
+            return(x)
+
+    temp = fry.friedmantest(simdata, variant, nreps, verbose=False)
+    testduration = round(nsim*(time.clock()-t))
+    response = input(
+        'This will take ~'+str(testduration)+' s. Continue? [y/n]')
+
+    if response is 'n' or response is 'N':
+        print('Simulation brutally cut down in its prime by the user')
+    elif response is 'y' or response is 'Y':
+        simdata = random((nsim, nblocks, nts)) + np.concatenate((
+            np.full((nsim, nblocks, 1), dif),
+            np.zeros((nsim, nblocks, nts - 1))), 2)
+        GroupTest = np.full(nsim, nan)
+        PairwiseTest = np.full(nsim, nan)
+        for k in range(nsim):
+            temp = fry.friedmantest(
+                simdata[k, :, :], variant, nreps, verbose=False)
+            GroupTest[k] = temp.P <= alpha
+            ps = np.asarray(temp.pairwisePs[2:])
+
+            PairwiseTest[k] = any(
+                logical_and(ps[:, 0] == 1, ps[:, 2] <= alpha)) and (
+                GroupTest[k] == 1)
+
+        print('Fraction with P <= ' + str(alpha) +
+              ' (i.e. correct rejections): ' + str(sum(GroupTest) / nsim))
+        print('Fraction with any pairwise Ps <= ' + str(alpha) + ': ' +
+              str(sum(PairwiseTest) / nsim))
     else:
         print('Invalid response. Simulation not done.')
