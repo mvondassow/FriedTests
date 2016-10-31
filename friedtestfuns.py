@@ -1,50 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Run two versions of Friedman test with multiple comparisons.
-
-The first version is based on Conover 1999 'Practical Non-Parameteric
-Statistics, 3rd Ed. (Following Iman and Davenport 1980). As an alternative for
-small sample sizes, there is a randomization implementation of Friedman's test.
-
-The Friedman test tests whether there is a difference among k treatments
-(columns) where data is grouped into b similar blocks (e.g. a colony to which
-several treatments were applied to different zooids). Specifically, the null
-hypothesis is that all rankings of data within a block are equally likely
-
-Functions and classes
----------------------
-friedmanstat : class
-    Class used doing different versions of Friedman test
-    methods: __init()__, cfriedman(), rfriedman(), multcompare(), & 
-        printfriedstuff()
-resamplealongrows : function
-    Resample an array along rows only; used to test Friedman test performance
-bootsample2D : function
-    Randomly resample an array once; unused
-randomize2D : function
-    Randomly resample an array multiple times (vectorized) used for rfriedman()
-    method of friedmanstat
-rankalongrows3D : function
-    Rank along the rows of a 3D numeric array using average value for rank of
-    ties. Used by rfriedman() method of friedmanstat.
-    Run some example tests on performance of Friedman test
-friedmantest : function
-    Run friedman test. Combines various steps using the class methods.
-    
-Dependencies
-------------
-numpy
-numpy.stats
-numpy.random
-scipy.stats
-
-Created on Thu Feb 18 11:10:29 2016
+Created on Wed Apr 27 15:41:45 2016
 
 @author: Michelangelo
 """
 from scipy.stats import rankdata, f, t
-from numpy import asarray, sum, empty, indices, array, isnan, logical_and, nan
-from numpy.random import randint
+from numpy import asarray, empty, indices, array, isnan, logical_and, nan
+from numpy.random import randint, random
 import numpy as np
 
 
@@ -77,7 +39,7 @@ def resamplealongrows(mydata):
 
 def bootsample2D(mydata):
     """
-    Randomize a 2D array once, to produce a new 2D array.
+    Resample a 2D array once, to produce a new 2D array.
 
     First resamples rows, and then resamples along rows. Produces an array from
     mydata that has the same dimensions, but each row is formed by first
@@ -103,14 +65,48 @@ def bootsample2D(mydata):
     return(mydata[rowinds, colinds])
 
 
-def randomize2D(mydata, nreps):
+def bootset2D(mydata, nreps):
     """
-    Randomize a 2D array multiple times, to produce a 3D array of multiple
-    randomizations.
+    Resample a 2D array multiple times, to produce a 3D array of multiple
+    bootstrap samples.
+
+    Produces 3D array from mydata in which each layer is formed by first
+    picking random rows from mydata, and then taking random samples (with
+    replacement) from each row. It is a 3D stack of bootstrap samples of the
+    2D array, preserving the structure of nts measurements from nblocks blocks.
+
+    Parameters
+    ----------
+    mydata : list or ndarray
+        A 2D array or list of equal-length lists of numbers; each layer (along
+        dim 0) contains one randomization.
+    nreps : number of times to run resampling
+
+    Returns
+    -------
+    ndarray
+        Array is dim 3, numeric. Each layer (along dim 0) contains one
+        resampling of mydata: nreps layers, by nblocks, by nts.
+    """
+    mydata = asarray(mydata)  # Force data array to be array.
+    [nblocks, nts] = mydata.shape  # Get dimensions of data
+    # rowinds: list of row indices, randomized by row
+    rowinds = indices(
+        (nblocks, nts))[0][randint(nblocks, size=[nreps, nblocks]), :]
+    # Resample column indices FOR EACH ROW with replacement.
+    colinds = randint(nts, size=[nreps, nblocks, nts])
+    # Return values from mydata at indices specified by rowinds and colinds
+    return(mydata[rowinds, colinds])
+
+
+def randomizeAlongRows(mydata, nreps):
+    """
+    Randomize a 2D array multiple times along the rows, to produce a 3D array
+    of multiple randomized samples.
 
     Produces an array from mydata that has the same dimensions, but each row
-    is formed by first picking random rows from mydata, and then taking random
-    samples (with replacement) from each row.
+    is formed by taking a randome permutation of the data from the original
+    row.
 
     Parameters
     ----------
@@ -126,12 +122,14 @@ def randomize2D(mydata, nreps):
         randomization of mydata.
     """
     mydata = asarray(mydata)  # Force data array to be array.
-    [nblocks, nts] = mydata.shape  # Get dimensions of data
-    # rowinds: list of row indices, randomized by row
-    rowinds = indices(
-        (nblocks, nts))[0][randint(nblocks, size=[nreps, nblocks]), :]
-    # Resample column indices FOR EACH ROW with replacement.
-    colinds = randint(nts, size=[nreps, nblocks, nts])
+    [nrows, ncolumns] = mydata.shape  # Get dimensions of data
+    # Create 3D array of random floats
+    myrands = random(size=(nreps, nrows, ncolumns))
+    # Convert random floats to randomized column indices.
+    colinds = np.argsort(myrands, 2)
+    # Create 3D array of row indices (matching original column indices).
+    rowinds = np.tile(
+        np.reshape(np.arange(nrows), (1, nrows, 1)), (nreps, 1, ncolumns))
     # Return values from mydata at indices specified by rowinds and colinds
     return(mydata[rowinds, colinds])
 
@@ -177,93 +175,6 @@ def rankalongrows3D(mydata):
     return(rankavg)
 
 
-def TestFriedStuff():
-    """
-    Function to run several tests on functions for Friedman test.
-    
-    Parameters
-    ----------
-    none
-    
-    Returns
-    -------
-    none
-    """
-    # Test example for Friedman test from Conover
-    print('Grass data example from conover: ')
-    grassdata = [[4,3,2,1], [4,2,3,1], [3,1.5,1.5,4], [3,1,2,4], [4,2,1,3],
-                 [2,2,2,4], [1,3,2,4], [2,4,1,3], [3.5,1,2,3.5], [4,1,3,2],
-                 [4,2,3,1], [3.5,1,2,3.5]]
-    print('Output from criedman() function, which follows Conover 1999)')
-    friedgrass = friedmanstat(grassdata)
-    friedgrass.cfriedman()
-    print(vars(friedgrass))
-    print('')
-    print('Expected Output: Summed Ranks: [ 38.   23.5  24.5  34. ]',
-          'nblocks: 12 ; ntreatments: 4 ; A1: 356.5 ; C1: 300.0',
-          'T1: 8.09734513274 ; T2: 3.19219790676 ; P: 0.0362154746433')
-
-    # Test Friedman for simple data set where it should be weak. Bootstrap
-    # maxk resamples (with replacement), and calculate Conover's version of
-    # Friedman test
-    print('Test cfriedman() for case in which it should perform poorly')
-    simdata = [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0]]  # ,[1,0,0]]
-    print('simdata: ', simdata)
-    nboot = 5000
-    p = empty(nboot)
-    l = 0
-    for k in range(nboot):
-        bootdat = resamplealongrows(simdata)
-        bootl = friedmanstat(bootdat)
-        bootl.cfriedman()
-        p[k] = bootl.P
-        if logical_and(isnan(p[k]), l < 5):
-            print('Found a nan! Mmmm... naan: ')
-            print(bootdat)
-            l = l + 1
-
-    print('number of resamples: ', nboot)
-    print('with nans')
-    for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001,
-                  0.0001]:
-        print('Fraction with p<', alpha, ': ', sum(p < alpha) / p.size)
-    # nan's only appear when T1 becomes a nan, when all data values are the
-    # same. Therefore, should cound as p=1; shouldn't make a difference, but
-    # check.
-    print('without nans (set p to 1 for nans)')
-    p2 = array(p)
-    p2[isnan(p)] = 1
-    for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001,
-                  0.0001]:
-        print('Fraction with p<', alpha, ': ', sum(p2 < alpha) / p2.size)
-    #  Expected output for both: fraction of p<alpha should be fairly close to
-    #  alpha, except at very low alpha. This suggests that even for low numbers
-    #  of replicates, Conover's version of the Friedman test seems pretty good,
-    #  although very low p-values are much too low, and intermediate
-    #  (0.1 - 0.05) are conservative.
-    #  Example output:
-    #  simdata:  [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0]]
-    #  number of bootstrap resamples:  5000
-    #  with nans (p=1)
-    #  Fraction with p< 0.5 :  0.5532
-    #  Fraction with p< 0.2 :  0.183
-    #  Fraction with p< 0.1 :  0.0888
-    #  Fraction with p< 0.05 :  0.03
-    #  Fraction with p< 0.02 :  0.03
-    #  Fraction with p< 0.01 :  0.0112
-    #  Fraction with p< 0.005 :  0.0014
-    #  Fraction with p< 0.002 :  0.0014
-    #  Fraction with p< 0.001 :  0.0014
-    #  Fraction with p< 0.0001 :  0.0014
-
-    print('---')
-    print('Test randomization version (bfriedman() of Friedman test')
-    maxb = 10000
-    print('p value for grass data from Conover; nreps = ', maxb)
-    friedgrass.rfriedman(nreps=maxb)
-    print(vars(friedgrass))
-
-
 def friedmantest(mydata, variant='Fdist', nreps=5000, verbose=True):
     """
     Run Friedman test and multiple comparisons.
@@ -280,25 +191,25 @@ def friedmantest(mydata, variant='Fdist', nreps=5000, verbose=True):
     verbose : Boolean, default: True
         Whether to print information in friemanstat object.
     """
-    try:
-        mystats = friedmanstat(mydata)
-        if (variant == 'Fdist'):
-            mystats.cfriedman()
-            mystats.multcompare()
-        elif (variant == 'Rand'):
-            mystats.rfriedman(nreps)
-            mystats.multcompare()
-        else:
-            mystats = None
-            print('Variant not recognized.')
+    #try:
+    mystats = friedmanstat(mydata)
+    if (variant == 'Fdist'):
+        mystats.cfriedman()
+        mystats.multcompare()
+    elif (variant == 'Rand'):
+        mystats.rfriedman(nreps)
+        mystats.multcompare()
+    else:
+        mystats = None
+        print('Variant not recognized. Should be "Rand" or "Fdist"')
 
-        if verbose and not (mystats is None):
-            mystats.printfriedstuff(verbose=True)
+    if verbose and not (mystats is None):
+        mystats.printfriedstuff(verbose=True)
 
-        return(mystats)
-    except:
-        print('Error in friedmantest')
-        return(None)
+    return(mystats)
+#    except:
+#        print('Error in friedmantest')
+#        return(None)
 
 
 class friedmanstat:
@@ -355,17 +266,17 @@ class friedmanstat:
                 ranks[k, :] = rankdata(mydata[k, :])  # , method='average')
 
             # summedranks: Sum of ranks for each treatment (Rj in Conover)
-            summedranks = sum(ranks, axis=0)
+            summedranks = np.sum(ranks, axis=0)
             # sumsqrranks: Sum of squared ranks used to correct for ties (A1
             # in Conover)
-            sumsqrranks = sum(ranks**2)
+            sumsqrranks = np.sum(ranks**2)
             # correction: correction factor for ties (C1 in Conover)
             correction = nblocks*nts*((nts+1)**2)/4
 
             # T1: Friedman's T1 statistic; approximately follows Chi2 under
             # null hypothesis. If statements to deal with cases (e.g. when all
             # columns are tied in all blocks, or some other error crops up.
-            T1numerator = (nts-1)*sum((summedranks-nblocks*(nts+1)/2)**2)
+            T1numerator = (nts-1)*np.sum((summedranks-nblocks*(nts+1)/2)**2)
             X = nblocks*(nts-1)
             if sumsqrranks == correction:
                 if T1numerator <= 0:
@@ -485,19 +396,19 @@ class friedmanstat:
                 # Generate randomized data (take 2 D data array; generate 3 D
                 # array of randomizations; each layer (along dim 0) contains
                 # one randomization.
-                RandomizedData = randomize2D(self.mydata, nreps)
+                RandomizedData = randomizeAlongRows(self.mydata, nreps)
                 # Rank randomized data.
                 RandDataRanks = rankalongrows3D(RandomizedData)
 
                 # Calculate Friedman statistic T1 for each randomization
-                SumRandRanks = sum(RandDataRanks, 1)
-                SumSqrRandRanks = sum(sum(RandDataRanks**2, 1), 1)
+                SumRandRanks = np.sum(RandDataRanks, 1)
+                SumSqrRandRanks = np.sum(np.sum(RandDataRanks**2, 1), 1)
                 correction = self.tiecorrection
-                randT1numer = (self.nts-1)*sum(
+                randT1numer = (self.nts-1)*np.sum(
                             (SumRandRanks-self.nblocks*(self.nts+1)/2)**2,1)
                 randT1denom = SumSqrRandRanks - correction
                 # Create logical array for values of the denominator that are
-                # grater than zero
+                # greater than zero
                 posvals = (randT1denom > 0)
                 # Create array to store values of T1 for each randomizated
                 # dataset
@@ -508,7 +419,7 @@ class friedmanstat:
                 # remains 'nan'
                 randT1[posvals] = randT1numer[posvals] / randT1denom[posvals]
                 # Calculate P value from bootstrap sample
-                self.P = sum(randT1 >= self.T1)/nreps
+                self.P = np.sum(randT1 >= self.T1)/nreps
 
                 # Calculate values of pairwise statistic used for comparisons
                 # between treatment pairs in Conover 1999: multcompare() will
@@ -518,14 +429,16 @@ class friedmanstat:
                 # Denominator for pairwise t-statistic from random data
                 multdenoms = (2 *
                                 (self.nblocks * SumSqrRandRanks -
-                                   sum(SumRandRanks ** 2, 1)) / df) ** (1/2)
+                                   np.sum(SumRandRanks ** 2, 1)) / df) ** (1/2)
                 # Calculate difference in summed ranks for an arbitrary pair of
                 # columns in the randomized data
                 multnumers = abs(SumRandRanks[:, 0] - SumRandRanks[:, 1])
                 # calculate pairwise t (similar to calculation of randT1)
                 posvals = (multdenoms > 0)
                 pairwise = np.full(nreps, nan)
-                pairwise[multdenoms == 0] = float(np.inf)
+                pairwise[logical_and(multdenoms == 0, multnumers>0)] = float(
+                    np.inf)
+                pairwise[logical_and(multdenoms==0, multnumers==0)] = 0
                 pairwise[posvals] = multnumers[posvals]/multdenoms[posvals]
 
                 # Set the distribution property.
@@ -576,7 +489,7 @@ class friedmanstat:
         """
         df = (self.nblocks-1)*(self.nts-1)
         denom = (2 *
-                    (self.nblocks * self.sumsqrranks - sum(
+                    (self.nblocks * self.sumsqrranks - np.sum(
                             self.summedranks ** 2)) / df) ** (1/2)    
         pairwisePs = [[
                 'multiple comparisons between pairs of treatments'],
@@ -585,10 +498,17 @@ class friedmanstat:
             for l in range(k+1, self.nts):
                 if denom > 0:
                     tobs = abs(self.summedranks[k] - self.summedranks[l])/denom
-                elif denom is 0:
-                    tobs = float('np.inf')
+                # Special cases if denominator goes to zero.
+                elif denom == 0:
+                    if abs(self.summedranks[k] - self.summedranks[l]) > 0:
+                        tobs = float(np.inf)
+                    elif abs(self.summedranks[k] - self.summedranks[l]) == 0:
+                        tobs = 0
+                    else:
+                        tobs = np.nan
+                        
                 else:
-                    tobs = nan
+                    tobs = np.nan
 
                 # k & l indices of columns for treatments (start at 0);
                 # 2-tailed P value = 2*(1-t.cdf(tobs, df))
@@ -607,12 +527,11 @@ class friedmanstat:
                     # self.distribution[3][1] (i.e. 'pairwise') represents
                     # extreme values.
                     pairwisePs = (
-                                    pairwisePs + [[k, l, sum(
+                                    pairwisePs + [[k, l, np.sum(
                                         tobs <= self.distribution[3][1]) /
                                             len(self.distribution[3][1])]]  )
                 else:
-                    pairwisePs = pairwisePs + ['Distribution not as expected']
-
+                    pairwisePs = pairwisePs + ['Distribution not as expected']              
         self.pairwisePs = pairwisePs
 
     def printfriedstuff(self, verbose=False):
@@ -654,6 +573,9 @@ class friedmanstat:
                 print(np.percentile(
                     self.distribution[2][1], [0, 25, 50, 75, 100]))
                 print('\nDistribution of pairwise statistic (randomization)')
-                print('min, 1st quartile, median, 3rd quartile, max')
+                # Set max value for distribution percentiles to 99.99 because
+                # of problem with numpy percentiles on infinite values
+                # (tries to calculate 0 * inf, which is undefined)
+                print('min, 1st quartile, median, 3rd quartile, 99.99')
                 print(np.percentile(
-                    self.distribution[3][1], [0, 25, 50, 75, 100]))
+                    self.distribution[3][1], [0, 25, 50, 99.99]))
