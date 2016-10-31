@@ -5,22 +5,24 @@ Moved to separate file on Thu Apr 23, 2016
 
 @author: Michelangelo
 """
-from scipy.stats import rankdata, f, t
-from numpy import asarray, sum, empty, indices, array, isnan, logical_and, nan
-from numpy.random import randint, random
+# from scipy.stats import rankdata, f, t
+from numpy import empty, array, isnan, logical_and, nan
+# from numpy import asarray, indices
+from numpy.random import random  # , randint
 import time as time
 import numpy as np
 
-import friedtestfuns as fry
+import FriedTests as fry
+
 
 def TestFriedStuff():
     """
     Function to run several tests on functions for Friedman test.
-    
+
     Parameters
     ----------
     none
-    
+
     Returns
     -------
     none
@@ -62,7 +64,7 @@ def TestFriedStuff():
     print('with nans')
     for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001,
                   0.0001]:
-        print('Fraction with p<', alpha, ': ', sum(p < alpha) / p.size)
+        print('Fraction with p<', alpha, ': ', np.sum(p < alpha) / p.size)
     # nan's only appear when T1 becomes a nan, when all data values are the
     # same. Therefore, should cound as p=1; shouldn't make a difference, but
     # check.
@@ -71,7 +73,7 @@ def TestFriedStuff():
     p2[isnan(p)] = 1
     for alpha in [0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001,
                   0.0001]:
-        print('Fraction with p<', alpha, ': ', sum(p2 < alpha) / p2.size)
+        print('Fraction with p<', alpha, ': ', np.sum(p2 < alpha) / p2.size)
     #  Expected output for both: fraction of p<alpha should be fairly close to
     #  alpha, except at very low alpha. This suggests that even for low numbers
     #  of replicates, Conover's version of the Friedman test seems pretty good,
@@ -105,7 +107,7 @@ def SimFriedStuff(nblocks=5, nts=3, distfunc=lambda x: x, variant='Rand',
                   nsim=1000, nreps=1000, alpha=0.05, verbose=True):
     """
     Run simulations to test Friedman test for null hypothesis.
-    
+
     Parameters
     ----------
     nblocks : int
@@ -133,7 +135,8 @@ def SimFriedStuff(nblocks=5, nts=3, distfunc=lambda x: x, variant='Rand',
         simdata = distfunc(simdata)
     except:
         print('distfunc is not a valid function on multidimensional arrays.'
-            'Continuing using uniform distribution')
+              'Continuing using uniform distribution')
+
         def distfunc(x):
             return(x)
 
@@ -153,7 +156,7 @@ def SimFriedStuff(nblocks=5, nts=3, distfunc=lambda x: x, variant='Rand',
             GroupTest[k] = temp.P <= alpha
 
         print('Fraction with P <= ' + str(alpha) + ': ' +
-              str(sum(GroupTest) / nsim))
+              str(np.sum(GroupTest) / nsim))
     else:
         print('Invalid response. Simulation not done.')
 
@@ -211,7 +214,8 @@ def SimFriedPost(nblocks=5, nts=3, dif=0.5, distfunc=lambda x: x,
         simdata = distfunc(simdata)
     except:
         print('distfunc is not a valid function on multidimensional arrays.'
-            'Continuing using uniform distribution')
+              'Continuing using uniform distribution')
+
         def distfunc(x):
             return(x)
 
@@ -239,8 +243,9 @@ def SimFriedPost(nblocks=5, nts=3, dif=0.5, distfunc=lambda x: x,
                 GroupTest[k] == 1)
 
         print('Fraction with P <= ' + str(alpha) +
-              ' (i.e. correct rejections): ' + str(sum(GroupTest) / nsim))
+              ' (i.e. correct rejections for omnibus test): ' + str(
+              np.sum(GroupTest) / nsim))
         print('Fraction with any pairwise Ps <= ' + str(alpha) + ': ' +
-              str(sum(PairwiseTest) / nsim))
+              str(np.sum(PairwiseTest) / nsim))
     else:
         print('Invalid response. Simulation not done.')

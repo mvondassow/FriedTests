@@ -44,8 +44,7 @@ Created on Thu Feb 18 11:10:29 2016
 
 @author: Michelangelo
 """
-from friedtestfuns import friedmantest, friedmanstat
-from friedtestfuns import randomizeAlongRows, rankalongrows3D, resamplealongrows
-from friedtestfuns import bootsample2D, bootset2D
-
-from FriedValidation import TestFriedStuff, SimFriedStuff
+from FriedTests.friedtestfuns import (friedmantest, friedmanstat,
+                                      randomizeAlongRows, rankalongrows3D,
+                                      resamplealongrows, bootsample2D,
+                                      bootset2D)

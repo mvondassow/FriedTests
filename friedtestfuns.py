@@ -5,7 +5,7 @@ Created on Wed Apr 27 15:41:45 2016
 @author: Michelangelo
 """
 from scipy.stats import rankdata, f, t
-from numpy import asarray, sum, empty, indices, array, isnan, logical_and, nan
+from numpy import asarray, empty, indices, array, isnan, logical_and, nan
 from numpy.random import randint, random
 import numpy as np
 
@@ -191,25 +191,25 @@ def friedmantest(mydata, variant='Fdist', nreps=5000, verbose=True):
     verbose : Boolean, default: True
         Whether to print information in friemanstat object.
     """
-    try:
-        mystats = friedmanstat(mydata)
-        if (variant == 'Fdist'):
-            mystats.cfriedman()
-            mystats.multcompare()
-        elif (variant == 'Rand'):
-            mystats.rfriedman(nreps)
-            mystats.multcompare()
-        else:
-            mystats = None
-            print('Variant not recognized.')
+    #try:
+    mystats = friedmanstat(mydata)
+    if (variant == 'Fdist'):
+        mystats.cfriedman()
+        mystats.multcompare()
+    elif (variant == 'Rand'):
+        mystats.rfriedman(nreps)
+        mystats.multcompare()
+    else:
+        mystats = None
+        print('Variant not recognized. Should be "Rand" or "Fdist"')
 
-        if verbose and not (mystats is None):
-            mystats.printfriedstuff(verbose=True)
+    if verbose and not (mystats is None):
+        mystats.printfriedstuff(verbose=True)
 
-        return(mystats)
-    except:
-        print('Error in friedmantest')
-        return(None)
+    return(mystats)
+#    except:
+#        print('Error in friedmantest')
+#        return(None)
 
 
 class friedmanstat:
@@ -266,17 +266,17 @@ class friedmanstat:
                 ranks[k, :] = rankdata(mydata[k, :])  # , method='average')
 
             # summedranks: Sum of ranks for each treatment (Rj in Conover)
-            summedranks = sum(ranks, axis=0)
+            summedranks = np.sum(ranks, axis=0)
             # sumsqrranks: Sum of squared ranks used to correct for ties (A1
             # in Conover)
-            sumsqrranks = sum(ranks**2)
+            sumsqrranks = np.sum(ranks**2)
             # correction: correction factor for ties (C1 in Conover)
             correction = nblocks*nts*((nts+1)**2)/4
 
             # T1: Friedman's T1 statistic; approximately follows Chi2 under
             # null hypothesis. If statements to deal with cases (e.g. when all
             # columns are tied in all blocks, or some other error crops up.
-            T1numerator = (nts-1)*sum((summedranks-nblocks*(nts+1)/2)**2)
+            T1numerator = (nts-1)*np.sum((summedranks-nblocks*(nts+1)/2)**2)
             X = nblocks*(nts-1)
             if sumsqrranks == correction:
                 if T1numerator <= 0:
@@ -401,10 +401,10 @@ class friedmanstat:
                 RandDataRanks = rankalongrows3D(RandomizedData)
 
                 # Calculate Friedman statistic T1 for each randomization
-                SumRandRanks = sum(RandDataRanks, 1)
-                SumSqrRandRanks = sum(sum(RandDataRanks**2, 1), 1)
+                SumRandRanks = np.sum(RandDataRanks, 1)
+                SumSqrRandRanks = np.sum(np.sum(RandDataRanks**2, 1), 1)
                 correction = self.tiecorrection
-                randT1numer = (self.nts-1)*sum(
+                randT1numer = (self.nts-1)*np.sum(
                             (SumRandRanks-self.nblocks*(self.nts+1)/2)**2,1)
                 randT1denom = SumSqrRandRanks - correction
                 # Create logical array for values of the denominator that are
@@ -419,7 +419,7 @@ class friedmanstat:
                 # remains 'nan'
                 randT1[posvals] = randT1numer[posvals] / randT1denom[posvals]
                 # Calculate P value from bootstrap sample
-                self.P = sum(randT1 >= self.T1)/nreps
+                self.P = np.sum(randT1 >= self.T1)/nreps
 
                 # Calculate values of pairwise statistic used for comparisons
                 # between treatment pairs in Conover 1999: multcompare() will
@@ -429,7 +429,7 @@ class friedmanstat:
                 # Denominator for pairwise t-statistic from random data
                 multdenoms = (2 *
                                 (self.nblocks * SumSqrRandRanks -
-                                   sum(SumRandRanks ** 2, 1)) / df) ** (1/2)
+                                   np.sum(SumRandRanks ** 2, 1)) / df) ** (1/2)
                 # Calculate difference in summed ranks for an arbitrary pair of
                 # columns in the randomized data
                 multnumers = abs(SumRandRanks[:, 0] - SumRandRanks[:, 1])
@@ -489,7 +489,7 @@ class friedmanstat:
         """
         df = (self.nblocks-1)*(self.nts-1)
         denom = (2 *
-                    (self.nblocks * self.sumsqrranks - sum(
+                    (self.nblocks * self.sumsqrranks - np.sum(
                             self.summedranks ** 2)) / df) ** (1/2)    
         pairwisePs = [[
                 'multiple comparisons between pairs of treatments'],
@@ -527,7 +527,7 @@ class friedmanstat:
                     # self.distribution[3][1] (i.e. 'pairwise') represents
                     # extreme values.
                     pairwisePs = (
-                                    pairwisePs + [[k, l, sum(
+                                    pairwisePs + [[k, l, np.sum(
                                         tobs <= self.distribution[3][1]) /
                                             len(self.distribution[3][1])]]  )
                 else:
@@ -573,7 +573,9 @@ class friedmanstat:
                 print(np.percentile(
                     self.distribution[2][1], [0, 25, 50, 75, 100]))
                 print('\nDistribution of pairwise statistic (randomization)')
-                print('min, 1st quartile, median, 3rd quartile, max')
+                # Set max value for distribution percentiles to 99.99 because
+                # of problem with numpy percentiles on infinite values
+                # (tries to calculate 0 * inf, which is undefined)
+                print('min, 1st quartile, median, 3rd quartile, 99.99')
                 print(np.percentile(
-                    self.distribution[3][1], [0, 25, 50, 75, 100]))
-
+                    self.distribution[3][1], [0, 25, 50, 99.99]))
